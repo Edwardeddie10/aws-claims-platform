@@ -244,6 +244,7 @@ crash.log
 
 ## 4. Configure Terraform
 
+Copy infrastructure/terraform.tfvars.example to infrastructure/terraform.tfvars, then replace the example account ID and email with your own. The terraform.tfvars file is excluded from Git.
 `versions.tf` declares Terraform `>= 1.5.0`, AWS provider `~> 6.0`, and archive provider `~> 2.0`.
 
 `providers.tf` sets:
