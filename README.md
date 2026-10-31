@@ -616,6 +616,95 @@ git commit -m "Document claims pipeline setup, configuration, and troubleshootin
 git push
 ```
 
+## Pipeline failure alerts
+
+Email notifications use a shared SNS topic:
+`claims-platform-dev-alerts`.
+
+Configuration is defined in `infrastructure/alerts.tf`.
+
+### Configure the email destination
+
+Create `infrastructure/terraform.tfvars`:
+
+```hcl
+alert_email = "your-email@example.com"
+```
+
+This file is excluded from Git. The email address is still stored in local
+Terraform state; `sensitive = true` hides it from normal CLI output.
+
+Run from `infrastructure/`:
+
+```bash
+terraform fmt
+terraform validate
+terraform plan
+terraform apply
+```
+
+Open the AWS subscription confirmation email and click **Confirm subscription**.
+
+### Alert conditions
+
+| Component | Trigger | Delivery path |
+|---|---|---|
+| Lambda | At least one execution error in a one-minute evaluation period | CloudWatch alarm → SNS → email |
+| Glue | Job enters FAILED, TIMEOUT, or STOPPED | EventBridge rule → SNS → email |
+
+Invalid claims are handled validation results and do not trigger the Lambda
+execution-error alarm. Manually stopping Glue also generates an alert.
+
+### Tests completed
+
+1. Published a test SNS message and received the email.
+2. Manually set the Lambda alarm to ALARM and received the alarm email.
+3. Started a separate Glue run with a nonexistent input path.
+4. Confirmed that run failed and received the Glue failure email.
+
+SNS delivery test:
+
+```bash
+aws sns publish \
+  --topic-arn arn:aws:sns:us-east-1:764888049772:claims-platform-dev-alerts \
+  --subject "Claims pipeline alert test" \
+  --message "Test notification from the claims pipeline." \
+  --profile claims-dev \
+  --region us-east-1
+```
+
+Lambda alarm delivery test:
+
+```bash
+aws cloudwatch set-alarm-state \
+  --alarm-name claims-platform-dev-lambda-errors \
+  --state-value ALARM \
+  --state-reason "Manual test of pipeline failure notifications" \
+  --profile claims-dev \
+  --region us-east-1
+```
+
+This tests the alarm notification path; it does not cause a Lambda execution
+failure. CloudWatch resumes evaluating the real metric afterward.
+
+Controlled Glue failure test:
+
+```bash
+aws glue start-job-run \
+  --job-name claims-platform-dev-transform \
+  --arguments '{"--INPUT_PATH":"s3://claims-platform-dev-landing-764888049772/alert-test-missing/","--OUTPUT_PATH":"s3://claims-platform-dev-landing-764888049772/alert-test-output/"}' \
+  --profile claims-dev \
+  --region us-east-1
+```
+
+The overrides apply only to that run. It failed while reading the nonexistent
+input, before writing output. Glue compute charges apply to the test.
+Notification delivery can take a few minutes.
+
+These tests verify delivery paths, not guaranteed delivery of every future
+failure. Glue queue expiration and notification-delivery failures need
+additional monitoring.
+
 ## Troubleshooting
 
 ### Terraform says “No changes” before anything was deployed
