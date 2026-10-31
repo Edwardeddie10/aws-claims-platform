@@ -1,0 +1,41 @@
+
+name: AWS Claims Platform CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate Python and Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Check Python syntax
+        run: |
+          python -m compileall -q src scripts
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive
+        working-directory: infrastructure
+
+      - name: Initialize Terraform without backend
+        run: terraform init -backend=false -input=false
+        working-directory: infrastructure
+
+      - name: Validate Terraform configuration
+        run: terraform validate -no-color
+        working-directory: infrastructure
